@@ -48,11 +48,41 @@ async def fetch_repos_page(runner: GitfiveRunner, page: int, repos: List[Dict[st
             repos.append(details)
 
 
+def _extract_repo_count(body: BeautifulSoup) -> int:
+    """
+    Extract the repository count from the navigation tab on a user's profile.
+    GitHub serves two different shells: the legacy anonymous one uses
+    `<span class="Counter" title="N">`, the newer Primer-React one (shown to
+    authenticated viewers) uses `<span data-component="counter">` with the
+    number in nested text.
+    """
+    tab = body.find("a", {"data-tab-item": "repositories"})
+    if tab is None:
+        return 0
+
+    legacy = tab.find("span", {"class": "Counter"})
+    if legacy is not None:
+        raw = legacy.attrs.get("title") or legacy.get_text()
+    else:
+        modern = tab.find("span", {"data-component": "counter"})
+        if modern is None:
+            return 0
+        raw = modern.get_text()
+
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    return int(digits) if digits else 0
+
+
 async def get_list(runner: GitfiveRunner):
     req = await runner.as_client.get(f"https://github.com/{runner.target.username}?tab=repositories")
 
     body = BeautifulSoup(req.text, 'html.parser')
-    total_repos = int(body.find("a", {"data-tab-item": "repositories"}).find("span", {"class": "Counter"}).attrs["title"])
+    total_repos = _extract_repo_count(body)
+
+    if not total_repos:
+        runner.target.repos = []
+        runner.target.languages_stats = {}
+        return
 
     to_request = range(1, ceil(total_repos/30)+1)
 

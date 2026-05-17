@@ -110,13 +110,17 @@ async def get_commits_count(runner: GitfiveRunner, repo_url: str="", raw_body: s
         raw_body = req.text
     body = BeautifulSoup(raw_body, 'html.parser')
     # Slightly modified this line to find the correct <span> containing the commit count
-    commits_icon_el = body.find("a", {"href": re.compile(r'.*/commits/mirage$')})
+    commits_icon_el = body.find("a", {"href": re.compile(r'.*/commits/mirage/?$')})
     if not commits_icon_el:
         return False, 0
     nb_commits_el = commits_icon_el.findNext("span")
     if not nb_commits_el:
         return False, 0
-    nb_commits_str = nb_commits_el.text.split()[0].replace(",", "")
+    nb_commits_text = nb_commits_el.text.strip() or commits_icon_el.get_text(strip=True)
+    parts = nb_commits_text.split()
+    if not parts:
+        return False, 0
+    nb_commits_str = parts[0].replace(",", "")
     if nb_commits_str == "∞":
         return True, 50000 # Temporary limit, because GitHub hasn't liked my 70k commits
     nb_commits = int(nb_commits_str)
