@@ -24,11 +24,20 @@ def guess_custom_domain(runner: GitfiveRunner):
     except Exception: # https://github.com/mxrch/GitFive/issues/15
         runner.rc.print("[!] Google Search failed, are you using a VPN/Proxy ?", style="italic")
 
-    # Hunter.io
-    req = httpx.get(f"https://hunter.io/v2/domains-suggestion?query={company}")
-    data = json.loads(req.text)
-    if results := data.get("data", [{}]):
-        hunter = results[0].get("domain")
+    # Hunter.io — the public hunter.io/v2 endpoint now 303-redirects to
+    # api.hunter.io and requires an API key (returns 401). Treat any non-200
+    # or non-JSON response as "no result" instead of crashing the whole run.
+    try:
+        req = httpx.get(
+            f"https://hunter.io/v2/domains-suggestion?query={company}",
+            follow_redirects=True,
+        )
+        if req.status_code == 200:
+            data = req.json()
+            if results := data.get("data", [{}]):
+                hunter = results[0].get("domain")
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+        runner.rc.print("[!] Hunter.io lookup failed.", style="italic")
 
     if hunter and (not google or hunter in google):
         runner.rc.print(f'🔍 [Hunter.io] Found possible domain "{hunter}" for company "{company}"', style="light_green")
